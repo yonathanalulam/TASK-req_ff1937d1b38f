@@ -71,15 +71,11 @@ echo "  Step 3/4 - Frontend unit tests (Vitest)"
 echo "=========================================="
 "${COMPOSE_CMD[@]}" run --rm frontend-unit-test
 
-# echo ""
-# echo "=========================================="
-# echo "  Step 4/4 - Frontend E2E tests (Playwright)"
-# echo "=========================================="
-# "${COMPOSE_CMD[@]}" run --rm frontend-test
-
 echo ""
-echo "[info] Frontend E2E tests are temporarily skipped in run_tests.sh"
-echo "[info] Run manually when needed: ${COMPOSE_CMD[*]} run --rm frontend-test"
+echo "=========================================="
+echo "  Step 4/4 - Frontend E2E tests (Playwright)"
+echo "=========================================="
+"${COMPOSE_CMD[@]}" run --rm frontend-test
 
 echo ""
 echo "All tests passed."
