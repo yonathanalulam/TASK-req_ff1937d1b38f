@@ -31,7 +31,10 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.backend-test
-    command: ["test", "-count=1", "./..."]
+    # -p 1 forces serial package execution; every integration-level package
+    # mutates the shared service_portal_test DB via truncate+insert, so
+    # parallel package runs race each other and cause spurious 404/422s.
+    command: ["test", "-count=1", "-p", "1", "./..."]
     environment:
       APP_ENV: test
       DB_HOST: db

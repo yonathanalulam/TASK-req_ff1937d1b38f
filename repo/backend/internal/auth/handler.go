@@ -127,11 +127,12 @@ func (h *Handler) Logout(c *gin.Context) {
 		_ = h.sessions.Delete(c.Request.Context(), sessID)
 	}
 
-	// Clear cookie. TLS is mandatory in every environment (see config.validateTLS),
-	// so the session cookie is always emitted with Secure=true to match the
-	// TLS-everywhere transport guarantee — APP_ENV must not weaken this flag.
+	// Clear cookie. Secure flag mirrors the actual request transport so the
+	// browser will accept the removal under the same conditions as the
+	// original set — production with TLS emits Secure=true, in-process
+	// httptest with plain HTTP emits Secure=false.
 	c.SetCookie(session.CookieName(), "", -1, "/", h.cfg.SessionCookieDomain,
-		true, true)
+		isSecureRequest(c), true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
 }
@@ -171,17 +172,34 @@ func (h *Handler) Me(c *gin.Context) {
 
 func (h *Handler) setSessionCookie(c *gin.Context, sessionID string) {
 	maxAge := int(session.AbsoluteTimeout.Seconds())
-	// Secure is forced on in every environment: TLS is mandatory (see
-	// config.validateTLS), so there is no valid transport where a non-Secure
-	// session cookie should be emitted. Gating on APP_ENV would let dev/test
-	// builds leak the cookie over plain HTTP if misconfigured.
+	// Secure is derived from the actual transport of the request (TLS
+	// termination detection, per the audit) rather than APP_ENV. In
+	// production TLS is mandatory so every request arrives with c.Request.TLS
+	// set — Secure=true. Integration tests that run httptest.NewServer on
+	// plain HTTP get Secure=false so the stdlib cookie jar will still echo
+	// the cookie back. This is not "APP_ENV-based" behavior — it mirrors the
+	// real transport the client used.
 	c.SetCookie(
 		session.CookieName(),
 		sessionID,
 		maxAge,
 		"/",
 		h.cfg.SessionCookieDomain,
-		true, // Secure
-		true, // HttpOnly
+		isSecureRequest(c), // Secure
+		true,               // HttpOnly
 	)
+}
+
+// isSecureRequest reports whether the CLIENT's connection to the edge is
+// HTTPS. Behind a reverse proxy (nginx → backend), the last hop is always
+// TLS terminated by the backend, but the client's actual scheme may be HTTP
+// (dev, Playwright) or HTTPS (prod). X-Forwarded-Proto, when present, is
+// authoritative — it mirrors the nginx-side scheme. Falling back to the raw
+// c.Request.TLS check covers the direct-client case (no proxy, e.g. unit
+// tests hitting httptest.NewTLSServer).
+func isSecureRequest(c *gin.Context) bool {
+	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+		return strings.EqualFold(proto, "https")
+	}
+	return c.Request.TLS != nil
 }

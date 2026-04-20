@@ -86,7 +86,10 @@ describe('auth store', () => {
     expect(store.isAuthenticated).toBe(true)
 
     axios.post.mockRejectedValueOnce(new Error('network'))
-    await store.logout()
+    // The store's logout() re-throws the axios rejection through its
+    // try/finally, so the test must swallow it — the point of the test is
+    // that state is reset in the `finally` branch regardless.
+    await expect(store.logout()).rejects.toThrow('network')
     expect(store.user).toBeNull()
     expect(store.csrfToken).toBe('')
   })

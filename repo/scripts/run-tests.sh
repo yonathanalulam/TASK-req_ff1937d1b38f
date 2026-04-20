@@ -9,6 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_DIR="${REPO_ROOT}/deploy/docker"
+PROJECT_NAME="service-portal-test"
 
 # Resolve docker compose invocation: prefer v2 plugin, fall back to v1 binary.
 if docker compose version >/dev/null 2>&1; then
@@ -58,35 +59,32 @@ fi
 
 cd "${COMPOSE_DIR}"
 
+COMPOSE_ARGS=(-p "${PROJECT_NAME}" -f docker-compose.yml -f docker-compose.test.yml --env-file "${ENV_FILE}")
+
+# Avoid collisions with an already-running dev stack and keep retries clean.
+"${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" down --remove-orphans >/dev/null 2>&1 || true
+cleanup() {
+  "${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" down --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 echo ""
 echo "══════════════════════════════════════════"
 echo "  Step 1/3 — Build images"
 echo "══════════════════════════════════════════"
-"${COMPOSE[@]}" \
-  -f docker-compose.yml \
-  -f docker-compose.test.yml \
-  --env-file "${ENV_FILE}" \
-  build --parallel
+"${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" build --parallel
 
 echo ""
 echo "══════════════════════════════════════════"
 echo "  Step 2/3 — Backend unit + integration tests"
 echo "══════════════════════════════════════════"
-"${COMPOSE[@]}" \
-  -f docker-compose.yml \
-  -f docker-compose.test.yml \
-  --env-file "${ENV_FILE}" \
-  run --rm backend-test
+"${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" run --rm backend-test
 
 echo ""
 echo "══════════════════════════════════════════"
 echo "  Step 3/3 — Playwright e2e tests"
 echo "══════════════════════════════════════════"
-"${COMPOSE[@]}" \
-  -f docker-compose.yml \
-  -f docker-compose.test.yml \
-  --env-file "${ENV_FILE}" \
-  run --rm frontend-test
+"${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" run --rm frontend-test
 
 echo ""
 echo "All tests passed."

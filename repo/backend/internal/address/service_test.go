@@ -144,7 +144,13 @@ func TestAddress_SetDefault_ClearsPrevious(t *testing.T) {
 
 func TestAddress_Delete(t *testing.T) {
 	db := testutil.DBOrSkip(t)
-	testutil.TruncateTables(t, db, "addresses", "user_roles", "user_preferences", "login_attempts", "sessions", "users")
+	// tickets FK-reference addresses, so truncate them first to avoid a
+	// 1451 parent-row constraint when an earlier test in this run leaves
+	// ticket rows behind.
+	testutil.TruncateTables(t, db,
+		"ticket_attachments", "ticket_notes", "tickets",
+		"service_offerings", "service_categories",
+		"addresses", "user_roles", "user_preferences", "login_attempts", "sessions", "users")
 
 	_, _ = db.Exec(
 		`INSERT INTO users (username, email, password_hash, display_name) VALUES (?,?,?,?)`,

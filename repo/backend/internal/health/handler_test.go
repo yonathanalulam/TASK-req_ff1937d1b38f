@@ -16,13 +16,11 @@ import (
 func TestHandler_HealthyDB(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Use nil db — handler must cope gracefully by calling Ping
-	// For a unit test we use a mock-like approach with a real httptest server
-	// Integration tests (using real DB) are in health_integration_test.go
+	// Use nil db — handler panics on Ping; Gin's Recovery middleware converts
+	// the panic into a 500 response so the test harness doesn't crash.
 	w := httptest.NewRecorder()
-	c, r := gin.CreateTestContext(w)
-	_ = c
-
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.GET("/health", health.Handler(nil))
 
 	req, err := http.NewRequest(http.MethodGet, "/health", nil)
@@ -30,8 +28,8 @@ func TestHandler_HealthyDB(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	// With nil db, Ping panics — we expect 500 from recovery middleware
-	// This test validates the handler is registered; integration test validates 200
+	// With nil db, Ping panics — recovery middleware returns 500.
+	// Integration tests validate the 200 happy-path against a real DB.
 	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusInternalServerError)
 }
 

@@ -3,6 +3,7 @@ package bgjob_test
 import (
 	"bytes"
 	"log"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

@@ -55,8 +55,13 @@ type UpdateProfileInput struct {
 func (s *Service) GetProfile(ctx context.Context, userID uint64, isAdmin bool) (*ProfileView, error) {
 	var p ProfileView
 	var phoneEnc []byte
+	// avatar_url + bio are NULL-able in the schema; COALESCE them at the
+	// query layer so new users (no profile edits yet) don't make GetProfile
+	// fail with a Scan-NULL-into-*string error.
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, username, email, display_name, avatar_url, bio, phone_encrypted, created_at
+		`SELECT id, username, email, display_name,
+		        COALESCE(avatar_url, ''), COALESCE(bio, ''),
+		        phone_encrypted, created_at
 		 FROM users WHERE id = ? AND is_deleted = 0`,
 		userID,
 	).Scan(&p.ID, &p.Username, &p.Email, &p.DisplayName,

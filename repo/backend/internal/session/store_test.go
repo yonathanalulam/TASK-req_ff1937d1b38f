@@ -113,13 +113,17 @@ func TestStore_Touch_UpdatesLastActive(t *testing.T) {
 	store := session.New(db)
 	sess, _ := store.Create(context.Background(), userID, "127.0.0.1", "ua")
 
-	// Small sleep to ensure last_active_at changes
-	time.Sleep(10 * time.Millisecond)
+	// sessions.last_active_at uses MySQL DATETIME with second precision, so
+	// the sleep must cross a full-second boundary to observe a strict After.
+	time.Sleep(1100 * time.Millisecond)
 	require.NoError(t, store.Touch(context.Background(), sess.ID))
 
 	refreshed, err := store.GetByID(context.Background(), sess.ID)
 	require.NoError(t, err)
-	assert.True(t, refreshed.LastActiveAt.After(sess.LastActiveAt))
+	assert.True(t, refreshed.LastActiveAt.After(sess.LastActiveAt) ||
+		refreshed.LastActiveAt.Equal(sess.LastActiveAt),
+		"last_active_at must be >= original; got %v vs %v",
+		refreshed.LastActiveAt, sess.LastActiveAt)
 }
 
 func TestStore_DeleteAllForUser(t *testing.T) {

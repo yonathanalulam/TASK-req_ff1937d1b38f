@@ -6,6 +6,9 @@ services:
   db:
     environment:
       MYSQL_DATABASE: ${DB_TEST_NAME:-service_portal_test}
+    # Keep the test stack internal-only so it can run even when the
+    # development stack is already bound to host ports.
+    ports: []
 
   migrate:
     environment:
@@ -21,7 +24,10 @@ services:
       dockerfile: deploy/docker/Dockerfile.backend-test
     # Override the default CMD with `-count=1` to disable the Go test result
     # cache — we want real results every run.
-    command: ["test", "-count=1", "./..."]
+    # -p 1 prevents cross-package parallelism; integration packages in this
+    # repo share a single DB and truncate common tables, so parallel package
+    # execution causes flaky auth/session races.
+    command: ["test", "-count=1", "-p", "1", "-v", "-timeout", "30m", "./..."]
     environment:
       APP_ENV: test
       DB_HOST: db
@@ -61,6 +67,14 @@ services:
       - frontend
       - backend
     restart: "no"
+
+  # Override runtime services to avoid host-port collisions with an already
+  # running dev stack (docker compose up).
+  backend:
+    ports: []
+
+  frontend:
+    ports: []
 
   # ── Test orchestrator (exit code drives CI pass/fail) ───────────────────────
   test:

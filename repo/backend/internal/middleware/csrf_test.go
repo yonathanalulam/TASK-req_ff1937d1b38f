@@ -27,12 +27,11 @@ func csrfRouter(token string) *gin.Engine {
 	})
 
 	csrfMW := middleware.NewCSRF(nil) // nil db — CSRF uses context only
-	r.POST("/protected", csrfMW.Validate(), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
-	r.GET("/public", csrfMW.Validate(), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	okHandler := func(c *gin.Context) { c.Status(http.StatusOK) }
+	r.POST("/protected", csrfMW.Validate(), okHandler)
+	r.PUT("/protected", csrfMW.Validate(), okHandler)
+	r.DELETE("/protected", csrfMW.Validate(), okHandler)
+	r.GET("/public", csrfMW.Validate(), okHandler)
 	return r
 }
 

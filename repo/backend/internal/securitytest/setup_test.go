@@ -74,7 +74,7 @@ func securityServer(t *testing.T) (*httptest.Server, *sql.DB) {
 		DBHost:              "db",
 		DBPort:              "3306",
 		FieldEncryptionKey:  testEncKey,
-		SessionCookieDomain: "localhost",
+		SessionCookieDomain: "",
 	}
 	r := router.New(cfg, db)
 	srv := httptest.NewServer(r)

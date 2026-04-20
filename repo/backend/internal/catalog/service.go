@@ -310,9 +310,16 @@ type rowScanner interface {
 
 func scanOffering(rs rowScanner) (*models.ServiceOffering, error) {
 	o := &models.ServiceOffering{}
-	err := rs.Scan(&o.ID, &o.AgentID, &o.CategoryID, &o.Name, &o.Description,
+	// description is NULL-able in the schema; scan through a NullString so
+	// offerings created without a description (a common path in tests and
+	// the admin UI) don't make the whole list endpoint 500.
+	var description sql.NullString
+	err := rs.Scan(&o.ID, &o.AgentID, &o.CategoryID, &o.Name, &description,
 		&o.BasePrice, &o.DurationMinutes, &o.ActiveStatus,
 		&o.CreatedAt, &o.UpdatedAt)
+	if description.Valid {
+		o.Description = description.String
+	}
 	return o, err
 }
 

@@ -145,10 +145,10 @@ func TestAuthMe_Success(t *testing.T) {
 	r.GET("/me", func(c *gin.Context) {
 		// Simulate successful authentication
 		c.JSON(http.StatusOK, gin.H{
-			"id": 1,
-			"username": "testuser",
-			"email": "test@example.com",
-			"display_name": "Test User"
+			"id":           1,
+			"username":     "testuser",
+			"email":        "test@example.com",
+			"display_name": "Test User",
 		})
 	})
 

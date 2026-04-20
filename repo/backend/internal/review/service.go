@@ -206,7 +206,7 @@ func (s *Service) Summary(ctx context.Context, offeringID uint64) (*models.Revie
 	var (
 		total    int
 		avg      sql.NullFloat64
-		positive int
+		positive sql.NullInt64 // SUM() returns NULL over an empty rowset
 	)
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*), AVG(rating), SUM(CASE WHEN rating >= 4 THEN 1 ELSE 0 END)
@@ -221,8 +221,8 @@ func (s *Service) Summary(ctx context.Context, offeringID uint64) (*models.Revie
 	if avg.Valid {
 		sum.AverageRating = avg.Float64
 	}
-	if total > 0 {
-		sum.PositiveRate = float64(positive) / float64(total)
+	if total > 0 && positive.Valid {
+		sum.PositiveRate = float64(positive.Int64) / float64(total)
 	}
 	return sum, nil
 }

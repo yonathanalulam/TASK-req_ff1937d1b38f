@@ -40,7 +40,7 @@ func hmacAdminHTTP(t *testing.T) (*httptest.Server, *sql.DB) {
 	cfg := &config.Config{
 		AppEnv: "test", Port: "8080", DBHost: "db", DBPort: "3306",
 		FieldEncryptionKey:  testEncKey,
-		SessionCookieDomain: "localhost",
+		SessionCookieDomain: "",
 	}
 	r := router.New(cfg, db)
 	srv := httptest.NewServer(r)

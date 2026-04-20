@@ -11,8 +11,17 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-service_portal}
       MYSQL_USER: ${DB_USER:-portal_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-portalpassword}
+      DB_NAME: ${DB_NAME:-service_portal}
+      DB_TEST_NAME: ${DB_TEST_NAME:-service_portal_test}
+      DB_USER: ${DB_USER:-portal_user}
     volumes:
       - db_data:/var/lib/mysql
+      # MySQL runs every *.sh/*.sql in /docker-entrypoint-initdb.d/ exactly
+      # once, on an empty data volume. The init script creates both the app
+      # and test databases and grants ${DB_USER} access to each — so a single
+      # volume can host both `docker compose up` (app DB) and `./run_tests.sh`
+      # (test DB) without the user having to drop the volume between the two.
+      - ./deploy/docker/mysql-initdb.sh:/docker-entrypoint-initdb.d/01-create-dbs.sh:ro
     ports:
       - "${DB_PORT:-3306}:3306"
     healthcheck:

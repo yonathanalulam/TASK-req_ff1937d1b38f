@@ -37,7 +37,7 @@ func ingestServer(t *testing.T) (*httptest.Server, *sql.DB) {
 		AppEnv: "test", Port: "8080", DBHost: "db", DBPort: "3306",
 		// HMAC verifier needs a real key to decrypt secrets
 		FieldEncryptionKey:  testEncKey,
-		SessionCookieDomain: "localhost",
+		SessionCookieDomain: "",
 	}
 	r := router.New(cfg, db)
 	srv := httptest.NewServer(r)

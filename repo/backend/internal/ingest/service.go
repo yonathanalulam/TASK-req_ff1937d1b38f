@@ -146,13 +146,18 @@ func (s *Service) CreateJob(ctx context.Context, sourceID uint64) (*models.Inges
 	return s.GetJob(ctx, uint64(id))
 }
 
-// GetJob returns a job by id.
+// GetJob returns a job by id. Unknown id surfaces as ErrNotFound so the
+// handler layer can translate it to a 404 rather than a generic 500.
 func (s *Service) GetJob(ctx context.Context, id uint64) (*models.IngestJob, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, source_id, status, rows_ingested, rows_expected, schema_valid,
 		        error_message, started_at, completed_at, created_at
 		 FROM ingest_jobs WHERE id = ?`, id)
-	return scanJob(row)
+	j, err := scanJob(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return j, err
 }
 
 // ListJobs returns recent jobs (newest first), optionally filtered by source.

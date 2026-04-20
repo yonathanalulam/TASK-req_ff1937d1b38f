@@ -37,7 +37,7 @@ func catalogServerWithDB(t *testing.T) (*httptest.Server, *sql.DB) {
 		DBHost:              "db",
 		DBPort:              "3306",
 		FieldEncryptionKey:  "",
-		SessionCookieDomain: "localhost",
+		SessionCookieDomain: "",
 	}
 	r := router.New(cfg, db)
 	srv := httptest.NewServer(r)

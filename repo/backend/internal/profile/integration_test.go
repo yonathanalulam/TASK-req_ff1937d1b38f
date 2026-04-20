@@ -32,7 +32,7 @@ func profileServer(t *testing.T) *httptest.Server {
 		DBHost:              "db",
 		DBPort:              "3306",
 		FieldEncryptionKey:  "",
-		SessionCookieDomain: "localhost",
+		SessionCookieDomain: "",
 	}
 	r := router.New(cfg, db)
 	srv := httptest.NewServer(r)
@@ -275,11 +275,13 @@ func TestProfileGet_Success(t *testing.T) {
 	resp := doProfileJSON(t, client, http.MethodGet, srv.URL+"/api/v1/users/me/profile", nil, "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var profile map[string]interface{}
-	err := json.NewDecoder(resp.Body).Decode(&profile)
+	var body map[string]interface{}
+	err := json.NewDecoder(resp.Body).Decode(&body)
 	require.NoError(t, err)
 	resp.Body.Close()
 
+	profile, ok := body["profile"].(map[string]interface{})
+	require.True(t, ok, "response must wrap the profile document under a profile key")
 	assert.Contains(t, profile, "id")
 	assert.Contains(t, profile, "username")
 	assert.Contains(t, profile, "email")

@@ -81,7 +81,11 @@ func TestCatalog_UpdateCategory(t *testing.T) {
 
 func TestCatalog_DeleteCategory(t *testing.T) {
 	db := testutil.DBOrSkip(t)
-	testutil.TruncateTables(t, db, "service_offerings", "service_categories")
+	// tickets reference service_categories via FK; leftover ticket rows
+	// from another test would block the delete with a 1451 constraint.
+	testutil.TruncateTables(t, db,
+		"ticket_attachments", "ticket_notes", "tickets",
+		"service_offerings", "service_categories")
 
 	svc := catalog.NewService(db)
 	cat, _ := svc.CreateCategory(context.Background(), catalog.CreateCategoryInput{

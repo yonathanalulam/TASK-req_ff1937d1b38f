@@ -38,7 +38,7 @@ func privacyServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	)
 	cfg := &config.Config{
 		AppEnv: "test", Port: "8080", DBHost: "db", DBPort: "3306",
-		FieldEncryptionKey: "", SessionCookieDomain: "localhost",
+		FieldEncryptionKey: "", SessionCookieDomain: "",
 	}
 	r := router.New(cfg, db)
 	srv := httptest.NewServer(r)
