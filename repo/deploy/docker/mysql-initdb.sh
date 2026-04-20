@@ -5,7 +5,10 @@
 # `./run_tests.sh` can share one volume without the test run clobbering the
 # app DB or vice-versa.
 
-set -eu
+# IMPORTANT: this script is sourced by the official MySQL entrypoint.
+# Do not enable `set -u` here, otherwise the parent entrypoint shell can fail
+# later when it references optional env vars (for example MYSQL_ONETIME_PASSWORD).
+set -e
 
 APP_DB="${DB_NAME:-service_portal}"
 TEST_DB="${DB_TEST_NAME:-service_portal_test}"
