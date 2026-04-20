@@ -1,0 +1,19 @@
+# Dedicated backend test image. Unlike the runtime image (which is a slim
+# distroless-style alpine built from a compiled binary), this one keeps the Go
+# toolchain and full source tree so that `go test ./...` can actually execute
+# inside the container. The test runner docker-compose service uses this image.
+FROM golang:1.22-alpine
+
+RUN apk add --no-cache git bash ca-certificates
+
+WORKDIR /src
+
+COPY backend/go.mod ./
+ENV GOFLAGS="-mod=mod" GONOSUMDB="*"
+RUN go mod download
+
+COPY backend/ .
+
+# Running `go test ./...` is the default; compose can override command if needed.
+ENTRYPOINT ["go"]
+CMD ["test", "./..."]

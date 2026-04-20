@@ -1,0 +1,39 @@
+# ── Stage 1: Build ────────────────────────────────────────────────────────────
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache git
+
+WORKDIR /build
+
+# Cache dependency downloads separately from source changes
+COPY backend/go.mod ./
+ENV GOFLAGS="-mod=mod" GONOSUMDB="*" GOPATH="/go"
+RUN go mod download
+
+# Copy all backend source
+COPY backend/ .
+
+# Build the single binary (handles server / migrate / seed / test subcommands)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-w -s" -o /server ./cmd/server
+
+# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /server ./server
+
+# Storage directories (overridden by docker-compose volumes in production)
+RUN mkdir -p storage/uploads storage/exports storage/backups storage/lakehouse storage/temp
+
+# Embed seed SQL files into the image so seeding works in any environment
+# (CI, CodeBuild, etc.) without relying on host-path volume mounts.
+COPY deploy/seed/ ./seeds/
+
+EXPOSE 8080
+
+ENTRYPOINT ["./server"]
+CMD ["server"]

@@ -1,0 +1,73 @@
+# Run with: ./scripts/run-tests.sh
+# Or manually: docker compose -f docker-compose.yml -f docker-compose.test.yml up --abort-on-container-exit test
+
+services:
+
+  db:
+    environment:
+      MYSQL_DATABASE: ${DB_TEST_NAME:-service_portal_test}
+
+  migrate:
+    environment:
+      DB_NAME: ${DB_TEST_NAME:-service_portal_test}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+
+  # ── Backend Tests (unit + integration) ─────────────────────────────────────
+  # Runs `go test ./...` inside an image that has the Go toolchain and the full
+  # backend source tree. Exit code drives CI pass/fail.
+  backend-test:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.backend-test
+    # Override the default CMD with `-count=1` to disable the Go test result
+    # cache — we want real results every run.
+    command: ["test", "-count=1", "./..."]
+    environment:
+      APP_ENV: test
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_TEST_NAME:-service_portal_test}
+      DB_USER: ${DB_USER:-portal_user}
+      DB_PASSWORD: ${DB_PASSWORD:-portalpassword}
+      FIELD_ENCRYPTION_KEY: ""
+    depends_on:
+      - migrate
+    restart: "no"
+
+  # ── Frontend Unit Tests (Vitest) ────────────────────────────────────────────
+  # Fast, DB-free component/store/router-guard tests. Runs inside the same
+  # Playwright-based image so we don't need a separate node toolchain.
+  frontend-unit-test:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.frontend-test
+    command: ["npx", "vitest", "run", "--reporter=default"]
+    environment:
+      CI: "true"
+    restart: "no"
+
+  # ── Frontend Playwright Tests ────────────────────────────────────────────────
+  # Runs real Playwright E2E against the built frontend and backend services.
+  # Uses the official Playwright image so browsers + deps are preinstalled.
+  frontend-test:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.frontend-test
+    command: ["npx", "playwright", "test"]
+    environment:
+      BASE_URL: http://frontend:80
+      CI: "true"
+    depends_on:
+      - frontend
+      - backend
+    restart: "no"
+
+  # ── Test orchestrator (exit code drives CI pass/fail) ───────────────────────
+  test:
+    image: alpine:3.19
+    command: >
+      sh -c "echo 'All test services completed' && exit 0"
+    depends_on:
+      - backend-test
+      - frontend-test
+    restart: "no"

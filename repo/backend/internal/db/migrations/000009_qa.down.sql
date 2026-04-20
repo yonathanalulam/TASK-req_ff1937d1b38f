@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS qa_posts;
+DROP TABLE IF EXISTS qa_threads;

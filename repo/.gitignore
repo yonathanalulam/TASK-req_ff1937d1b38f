@@ -1,0 +1,15 @@
+# Local environment
+.env
+
+# Build + dependency artifacts
+node_modules/
+dist/
+
+# Runtime storage (generated at container start; never commit)
+storage/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
