@@ -1,23 +1,25 @@
 services:
 
   # ── MySQL Database ──────────────────────────────────────────────────────────
+  # Every env var has a ${VAR:-default} fallback so `docker compose up` works
+  # in a cold environment without a pre-populated .env file.
   db:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-service_portal}
+      MYSQL_USER: ${DB_USER:-portal_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-portalpassword}
     volumes:
       - db_data:/var/lib/mysql
     ports:
       - "${DB_PORT:-3306}:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD}"]
-      interval: 10s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD:-rootpassword}"]
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
       start_period: 30s
 
   # ── Run Migrations ──────────────────────────────────────────────────────────
@@ -29,13 +31,13 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 3306
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-service_portal}
+      DB_USER: ${DB_USER:-portal_user}
+      DB_PASSWORD: ${DB_PASSWORD:-portalpassword}
       APP_ENV: ${APP_ENV:-development}
-      # config.Load() validates this in any non-test env, so it must be
-      # forwarded to migrate / seed one-shot containers as well.
-      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-/app/storage/tls/dev.crt}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-/app/storage/tls/dev.key}
     depends_on:
       db:
         condition: service_healthy
@@ -50,15 +52,18 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 3306
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-service_portal}
+      DB_USER: ${DB_USER:-portal_user}
+      DB_PASSWORD: ${DB_PASSWORD:-portalpassword}
       APP_ENV: ${APP_ENV:-development}
-      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-/app/storage/tls/dev.crt}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-/app/storage/tls/dev.key}
     volumes:
       - ./deploy/seed:/app/seeds:ro
     depends_on:
-      - migrate
+      migrate:
+        condition: service_completed_successfully
     restart: on-failure
 
   # ── Backend API ─────────────────────────────────────────────────────────────
@@ -72,22 +77,26 @@ services:
       APP_ENV: ${APP_ENV:-development}
       DB_HOST: db
       DB_PORT: 3306
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-service_portal}
+      DB_USER: ${DB_USER:-portal_user}
+      DB_PASSWORD: ${DB_PASSWORD:-portalpassword}
       PORT: 8080
-      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef}
       SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-localhost}
-      TLS_CERT_FILE: ${TLS_CERT_FILE:-}
-      TLS_KEY_FILE: ${TLS_KEY_FILE:-}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-/app/storage/tls/dev.crt}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-/app/storage/tls/dev.key}
     depends_on:
-      - migrate
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/storage/uploads
       - exports:/app/storage/exports
       - backups:/app/storage/backups
       - lakehouse:/app/storage/lakehouse
       - temp:/app/storage/temp
+      - tls:/app/storage/tls
     ports:
       - "${BACKEND_PORT:-8080}:8080"
 
@@ -97,7 +106,7 @@ services:
       context: .
       dockerfile: deploy/docker/Dockerfile.frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     volumes:
       - ./deploy/seed:/app/seeds:ro
     restart: unless-stopped
@@ -113,3 +122,4 @@ volumes:
   backups:
   lakehouse:
   temp:
+  tls:

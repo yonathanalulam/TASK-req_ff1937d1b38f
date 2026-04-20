@@ -1,280 +1,198 @@
-# API Specification
+# Local Service Commerce & Content Operations Portal - API Specification
 
-## Overview
+All endpoints are served by the Go/Gin server under `/api/v1/*` over TLS.
 
-This document describes the REST API for the Eagle Point Service Portal. The API provides endpoints for authentication, user management, service catalog, tickets, reviews, and administrative functions.
+- **Session auth:** HttpOnly cookie issued at login. State-changing requests must also carry `X-CSRF-Token` (minted per session, returned on login).
+- **HMAC auth** (internal routes): `X-Key-ID: <key_id>` plus `X-Signature: hmac-sha256 <hex>` over `METHOD + "\n" + PATH + "\n" + hex(sha256(body))`.
+- **Rate limits:** 60 requests/minute per authenticated user (or per IP when unauthenticated); 10 requests/hour per user for review create+update (shared bucket); 10/hour for abuse reports.
+- **Errors:** JSON envelope `{ "error": { "code": "...", "message": "..." } }` with standard HTTP status.
 
-## Base URL
+## Public / Unauthenticated
 
-```
-http://localhost:8080/api/v1
-```
+| Method | Path                                          | Description                                    |
+|--------|-----------------------------------------------|------------------------------------------------|
+| GET    | `/health`                                     | Liveness + DB check                            |
+| POST   | `/api/v1/auth/register`                       | Create account                                 |
+| POST   | `/api/v1/auth/login`                          | Issue session cookie + CSRF token              |
+| GET    | `/api/v1/service-categories`                  | List active service categories                 |
+| GET    | `/api/v1/shipping/regions`                    | List shipping regions                          |
+| GET    | `/api/v1/shipping/templates`                  | List shipping templates                        |
+| GET    | `/api/v1/service-offerings/:id/reviews`       | List reviews for an offering                   |
+| GET    | `/api/v1/service-offerings/:id/review-summary`| Aggregated review metrics (positive-rate, star histogram) |
 
-## Authentication
+## Authenticated Session
 
-The API uses session-based authentication with CSRF protection. All protected endpoints require:
-- Valid session cookie
-- CSRF token in headers
+All routes below require a valid session, a matching `X-CSRF-Token` on non-GET requests, and pass through the 60/min general rate limiter.
 
-### Authentication Endpoints
+### Auth & session
 
-#### POST /auth/login
-Authenticates a user and creates a session.
+| Method | Path                        | Description                                    |
+|--------|-----------------------------|------------------------------------------------|
+| POST   | `/api/v1/auth/logout`       | Invalidate the current session                 |
+| GET    | `/api/v1/auth/me`           | Current user + unread notification count       |
 
-**Request Body:**
-```json
-{
-  "email": "string",
-  "password": "string"
-}
-```
+### Profile, preferences, favorites, history
 
-**Response:**
-```json
-{
-  "success": true,
-  "user": {
-    "id": "uuid",
-    "email": "string",
-    "name": "string",
-    "role": "string"
-  }
-}
-```
+| Method | Path                                             | Description                              |
+|--------|--------------------------------------------------|------------------------------------------|
+| GET    | `/api/v1/users/me/profile`                       | Profile (masked phone unless admin)      |
+| PUT    | `/api/v1/users/me/profile`                       | Update profile (accepts plaintext phone) |
+| GET    | `/api/v1/users/me/preferences`                   | Notification + muted tags/authors        |
+| PUT    | `/api/v1/users/me/preferences`                   | Update preferences                       |
+| GET    | `/api/v1/users/me/favorites`                     | Favorited offerings                      |
+| POST   | `/api/v1/users/me/favorites`                     | Add favorite                             |
+| DELETE | `/api/v1/users/me/favorites/:offering_id`        | Remove favorite                          |
+| GET    | `/api/v1/users/me/history`                       | Browsing history                         |
+| DELETE | `/api/v1/users/me/history`                       | Clear history                            |
 
-#### POST /auth/logout
-Terminates the user session.
+### Address book (US-style)
 
-**Response:**
-```json
-{
-  "success": true
-}
-```
+| Method | Path                                     | Description                                   |
+|--------|------------------------------------------|-----------------------------------------------|
+| GET    | `/api/v1/users/me/addresses`             | List addresses (lines 1/2 decrypted on read)  |
+| POST   | `/api/v1/users/me/addresses`             | Create; ZIP format + required city/state      |
+| PUT    | `/api/v1/users/me/addresses/:id`         | Update                                        |
+| DELETE | `/api/v1/users/me/addresses/:id`         | Delete                                        |
+| PUT    | `/api/v1/users/me/addresses/:id/default` | Enforce single-default invariant              |
 
-#### GET /auth/me
-Returns current user information.
+### Service offerings & shipping estimate
 
-**Response:**
-```json
-{
-  "id": "uuid",
-  "email": "string",
-  "name": "string",
-  "role": "string",
-  "profile": {
-    "address": "string",
-    "phone": "string"
-  }
-}
-```
+| Method | Path                                           | Roles                  | Description                                  |
+|--------|------------------------------------------------|------------------------|----------------------------------------------|
+| GET    | `/api/v1/service-offerings`                    | any authenticated      | Paginated list                               |
+| GET    | `/api/v1/service-offerings/:id`                | any authenticated      | Offering detail                              |
+| POST   | `/api/v1/service-offerings`                    | ServiceAgent, Admin    | Create offering                              |
+| PUT    | `/api/v1/service-offerings/:id`                | ServiceAgent, Admin    | Update offering                              |
+| PATCH  | `/api/v1/service-offerings/:id/status`         | ServiceAgent, Admin    | Enable/disable offering                      |
+| POST   | `/api/v1/shipping/estimate`                    | any authenticated      | Fee + arrival window by region/weight/quantity |
 
-## User Profile Management
+### Tickets
 
-#### GET /profile
-Retrieves user profile information.
+| Method | Path                                                | Description                                                   |
+|--------|-----------------------------------------------------|---------------------------------------------------------------|
+| GET    | `/api/v1/tickets`                                   | List tickets scoped to the caller                             |
+| POST   | `/api/v1/tickets`                                   | Create (blocked by `FreezeCheck`); attachments ≤5, ≤5 MB each |
+| GET    | `/api/v1/tickets/:id`                               | Ticket detail with status + SLA timer                         |
+| PATCH  | `/api/v1/tickets/:id/status`                        | Advance state (Accepted → Dispatched → In Service → Completed → Closed) or user cancel before Dispatch |
+| GET    | `/api/v1/tickets/:id/notes`                         | List notes                                                    |
+| POST   | `/api/v1/tickets/:id/notes`                         | Add note (`FreezeCheck` + `ScreenContent("content")`)         |
+| GET    | `/api/v1/tickets/:id/attachments`                   | List attachments                                              |
+| DELETE | `/api/v1/tickets/:id/attachments/:file_id`          | Delete attachment                                             |
 
-#### PUT /profile
-Updates user profile information.
+### Reviews
 
-**Request Body:**
-```json
-{
-  "name": "string",
-  "address": "string",
-  "phone": "string"
-}
-```
+Review create/update share a 10/hour bucket; reports use a separate 10/hour bucket.
 
-## Service Catalog
+| Method | Path                                              | Description                                              |
+|--------|---------------------------------------------------|----------------------------------------------------------|
+| POST   | `/api/v1/tickets/:id/reviews`                     | Create 1–5 star review with text + images                |
+| PUT    | `/api/v1/tickets/:id/reviews/:review_id`          | Update review                                            |
+| POST   | `/api/v1/reviews/:id/reports`                     | Report abusive review (throttled separately)             |
 
-#### GET /catalog/services
-Retrieves list of available services.
+### Q&A
 
-**Response:**
-```json
-{
-  "services": [
-    {
-      "id": "uuid",
-      "name": "string",
-      "description": "string",
-      "category": "string",
-      "price": "number"
-    }
-  ]
-}
-```
+| Method | Path                                                           | Roles                      |
+|--------|----------------------------------------------------------------|----------------------------|
+| GET    | `/api/v1/service-offerings/:id/qa`                             | any authenticated          |
+| POST   | `/api/v1/service-offerings/:id/qa`                             | RegularUser, Admin         |
+| POST   | `/api/v1/service-offerings/:id/qa/:thread_id/replies`          | ServiceAgent, Admin        |
+| DELETE | `/api/v1/qa/:post_id`                                          | Moderator, Admin           |
 
-#### GET /catalog/services/{id}
-Retrieves specific service details.
+### Notifications
 
-## Tickets
+| Method | Path                                                 | Description                             |
+|--------|------------------------------------------------------|-----------------------------------------|
+| GET    | `/api/v1/users/me/notifications`                     | Notification list                       |
+| GET    | `/api/v1/users/me/notifications/unread-count`        | Unread count badge                      |
+| GET    | `/api/v1/users/me/notifications/outbox`              | Outbox for non-in-app channels          |
+| PATCH  | `/api/v1/users/me/notifications/read-all`            | Mark all read                           |
+| PATCH  | `/api/v1/users/me/notifications/:id/read`            | Mark one read                           |
 
-#### GET /tickets
-Retrieves user's tickets.
+### Privacy center
 
-**Query Parameters:**
-- `status`: filter by status (open, closed, pending)
-- `limit`: number of results to return
-- `offset`: pagination offset
+| Method | Path                                           | Description                                 |
+|--------|------------------------------------------------|---------------------------------------------|
+| POST   | `/api/v1/users/me/export-request`              | Queue export job                            |
+| GET    | `/api/v1/users/me/export-request/status`       | Poll status                                 |
+| GET    | `/api/v1/users/me/export-request/download`     | Download the generated export file          |
+| POST   | `/api/v1/users/me/deletion-request`            | Request deletion (30-day grace)             |
+| GET    | `/api/v1/users/me/deletion-request/status`     | Poll deletion status                        |
 
-#### POST /tickets
-Creates a new support ticket.
+### Moderation (Moderator or Admin)
 
-**Request Body:**
-```json
-{
-  "subject": "string",
-  "description": "string",
-  "priority": "low|medium|high",
-  "service_id": "uuid"
-}
-```
+| Method | Path                                      | Description                                |
+|--------|-------------------------------------------|--------------------------------------------|
+| GET    | `/api/v1/moderation/queue`                | List pending items                         |
+| POST   | `/api/v1/moderation/queue/:id/approve`    | Approve (no violation recorded)            |
+| POST   | `/api/v1/moderation/queue/:id/reject`     | Reject (records violation, extends freeze) |
+| GET    | `/api/v1/moderation/actions`              | Moderator action history                   |
 
-#### GET /tickets/{id}
-Retrieves specific ticket details.
+### Data operator (Data Operator or Admin)
 
-#### PUT /tickets/{id}
-Updates ticket status or adds comments.
+| Method | Path                                                | Description                                |
+|--------|-----------------------------------------------------|--------------------------------------------|
+| GET    | `/api/v1/dataops/sources`                           | List ingest sources                        |
+| POST   | `/api/v1/dataops/sources`                           | Create source                              |
+| PUT    | `/api/v1/dataops/sources/:id`                       | Update source                              |
+| GET    | `/api/v1/dataops/jobs`                              | List ingest jobs                           |
+| POST   | `/api/v1/dataops/jobs`                              | Create job                                 |
+| GET    | `/api/v1/dataops/jobs/:id`                          | Job detail                                 |
+| POST   | `/api/v1/dataops/jobs/:id/run`                      | Trigger a run (resumes from checkpoint)    |
+| GET    | `/api/v1/dataops/schema-versions/:source_id`        | Schema evolution history                   |
+| GET    | `/api/v1/dataops/catalog`                           | Lakehouse catalog listing                  |
+| GET    | `/api/v1/dataops/catalog/:id`                       | Catalog entry detail                       |
+| GET    | `/api/v1/dataops/lineage/:id`                       | Lineage edges                              |
 
-## Reviews
+### Administrator
 
-#### GET /reviews
-Retrieves service reviews.
+| Method | Path                                                   | Description                                    |
+|--------|--------------------------------------------------------|------------------------------------------------|
+| GET    | `/api/v1/admin/hmac-keys`                              | List HMAC keys (metadata only)                 |
+| POST   | `/api/v1/admin/hmac-keys`                              | Create key; plaintext returned once            |
+| POST   | `/api/v1/admin/hmac-keys/rotate`                       | Hard-swap existing key's secret                |
+| DELETE | `/api/v1/admin/hmac-keys/:id`                          | Revoke                                         |
+| POST   | `/api/v1/admin/service-categories`                     | Create category                                |
+| PUT    | `/api/v1/admin/service-categories/:id`                 | Update category                                |
+| DELETE | `/api/v1/admin/service-categories/:id`                 | Delete category                                |
+| POST   | `/api/v1/admin/shipping/regions`                       | Create region                                  |
+| POST   | `/api/v1/admin/shipping/templates`                     | Create template                                |
+| PUT    | `/api/v1/admin/shipping/templates/:id`                 | Update template                                |
+| GET    | `/api/v1/admin/notification-templates`                 | List templates                                 |
+| PUT    | `/api/v1/admin/notification-templates/:code`           | Upsert template                                |
+| GET    | `/api/v1/admin/sensitive-terms`                        | List dictionary                                |
+| POST   | `/api/v1/admin/sensitive-terms`                        | Add term (prohibited or borderline)            |
+| DELETE | `/api/v1/admin/sensitive-terms/:id`                    | Remove term                                    |
+| GET    | `/api/v1/admin/users/:user_id/violations`              | Per-user violation history                     |
+| GET    | `/api/v1/admin/audit-logs`                             | Append-only audit log                          |
+| DELETE | `/api/v1/admin/users/:user_id`                         | Hard-delete user (privacy compliance)          |
+| GET    | `/api/v1/admin/legal-holds`                            | List legal holds                               |
+| POST   | `/api/v1/admin/legal-holds`                            | Place hold on source/job                       |
+| DELETE | `/api/v1/admin/legal-holds/:id`                        | Release hold                                   |
+| POST   | `/api/v1/admin/lakehouse/lifecycle/run`                | Trigger on-demand archive + purge sweep        |
 
-#### POST /reviews
-Submits a new service review.
+## HMAC-Protected Internal Routes
 
-**Request Body:**
-```json
-{
-  "service_id": "uuid",
-  "rating": "number",
-  "comment": "string"
-}
-```
+For ingestion workers. Every request must carry `X-Key-ID` and `X-Signature: hmac-sha256 <hex>` over `METHOD\nPATH\nhex(sha256(body))`. No session/CSRF is required.
 
-## Notifications
+| Method | Path                                                   | Description                              |
+|--------|--------------------------------------------------------|------------------------------------------|
+| GET    | `/api/v1/internal/data/sources`                        | List sources                             |
+| POST   | `/api/v1/internal/data/sources`                        | Register source                          |
+| PUT    | `/api/v1/internal/data/sources/:id`                    | Update source                            |
+| GET    | `/api/v1/internal/data/jobs`                           | List jobs                                |
+| POST   | `/api/v1/internal/data/jobs`                           | Create job                               |
+| GET    | `/api/v1/internal/data/jobs/:id`                       | Job detail                               |
+| GET    | `/api/v1/internal/data/schema-versions/:source_id`     | Schema evolution                         |
+| GET    | `/api/v1/internal/data/catalog`                        | Lakehouse catalog                        |
+| GET    | `/api/v1/internal/data/catalog/:id`                    | Catalog entry                            |
+| GET    | `/api/v1/internal/data/lineage/:id`                    | Lineage edges                            |
 
-#### GET /notifications
-Retrieves user notifications.
+## Conventions
 
-#### PUT /notifications/{id}/read
-Marks notification as read.
-
-## Admin Endpoints
-
-#### GET /admin/users
-Retrieves list of users (admin only).
-
-#### GET /admin/audit
-Retrieves audit logs (admin only).
-
-#### POST /admin/ingest
-Bulk data ingestion endpoint (admin only).
-
-## Health Check
-
-#### GET /health
-Returns service health status.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "ISO8601",
-  "version": "string"
-}
-```
-
-## Error Responses
-
-All endpoints return standard error responses:
-
-```json
-{
-  "error": {
-    "code": "string",
-    "message": "string",
-    "details": "object"
-  }
-}
-```
-
-### Common Error Codes
-
-- `UNAUTHORIZED`: Invalid or missing authentication
-- `FORBIDDEN`: Insufficient permissions
-- `NOT_FOUND`: Resource not found
-- `VALIDATION_ERROR`: Invalid request data
-- `RATE_LIMITED`: Too many requests
-- `INTERNAL_ERROR`: Server error
-
-## Rate Limiting
-
-The API implements rate limiting:
-- General endpoints: 100 requests per minute
-- Review/report endpoints: 10 requests per minute
-
-## Security Features
-
-- CSRF protection on all state-changing endpoints
-- Session-based authentication with secure cookies
-- Field-level encryption for sensitive data
-- HMAC verification for internal API calls
-- Request logging and audit trails
-
-## Data Models
-
-### User
-```json
-{
-  "id": "uuid",
-  "email": "string",
-  "name": "string",
-  "role": "user|admin|moderator",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
-
-### Service
-```json
-{
-  "id": "uuid",
-  "name": "string",
-  "description": "string",
-  "category": "string",
-  "price": "decimal",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
-
-### Ticket
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "subject": "string",
-  "description": "string",
-  "status": "open|closed|pending",
-  "priority": "low|medium|high",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
-
-### Review
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "service_id": "uuid",
-  "rating": "number",
-  "comment": "string",
-  "status": "pending|approved|rejected",
-  "created_at": "datetime"
-}
-```
+- **Timestamps:** RFC3339 UTC.
+- **IDs:** unsigned 64-bit integers serialized as JSON numbers.
+- **Pagination:** `?page=` + `?page_size=`; responses include `items` and `total`.
+- **Masking:** phone numbers appear as `(NXX) ***-XXXX` for non-admin readers; owning user receives plaintext on their own `GET /users/me/profile` only when editing flows explicitly require it.
+- **Attachments:** uploads stored under `storage/uploads/`; JPG/PNG/PDF, ≤5 MB each, max 5 per ticket.
+- **Lockout response:** 423 with a body describing the remaining lock duration.
+- **Rate-limit response:** 429 with `Retry-After` header.

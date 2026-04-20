@@ -1,0 +1,74 @@
+# Test overlay for docker-compose.yml. Layered with:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml ...
+# Every service has defaulted env vars so cold-start works without a .env
+# file committed to the repo.
+
+services:
+
+  db:
+    environment:
+      MYSQL_DATABASE: ${DB_TEST_NAME:-service_portal_test}
+
+  migrate:
+    environment:
+      DB_NAME: ${DB_TEST_NAME:-service_portal_test}
+
+  seed:
+    environment:
+      DB_NAME: ${DB_TEST_NAME:-service_portal_test}
+
+  backend:
+    environment:
+      DB_NAME: ${DB_TEST_NAME:-service_portal_test}
+      APP_ENV: test
+
+  frontend:
+    depends_on:
+      - backend
+
+  # ── Backend Tests (unit + integration) ─────────────────────────────────────
+  backend-test:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.backend-test
+    command: ["test", "-count=1", "./..."]
+    environment:
+      APP_ENV: test
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_TEST_NAME:-service_portal_test}
+      DB_USER: ${DB_USER:-portal_user}
+      DB_PASSWORD: ${DB_PASSWORD:-portalpassword}
+      FIELD_ENCRYPTION_KEY: ""
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── Frontend Unit Tests (Vitest) ───────────────────────────────────────────
+  frontend-unit-test:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.frontend-test
+    command: ["npx", "vitest", "run", "--reporter=default"]
+    environment:
+      CI: "true"
+    restart: "no"
+
+  # ── Frontend E2E Tests (Playwright) ────────────────────────────────────────
+  frontend-test:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.frontend-test
+    command: ["npx", "playwright", "test"]
+    environment:
+      BASE_URL: http://frontend:80
+      CI: "true"
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+    restart: "no"

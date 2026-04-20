@@ -20,14 +20,18 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates tzdata
+# openssl is required at runtime for the entrypoint's auto-generated
+# self-signed TLS pair when the container starts without a real cert mounted.
+RUN apk add --no-cache ca-certificates tzdata openssl
 
 WORKDIR /app
 
 COPY --from=builder /server ./server
+COPY deploy/docker/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
+RUN chmod +x /usr/local/bin/backend-entrypoint.sh
 
 # Storage directories (overridden by docker-compose volumes in production)
-RUN mkdir -p storage/uploads storage/exports storage/backups storage/lakehouse storage/temp
+RUN mkdir -p storage/uploads storage/exports storage/backups storage/lakehouse storage/temp storage/tls
 
 # Embed seed SQL files into the image so seeding works in any environment
 # (CI, CodeBuild, etc.) without relying on host-path volume mounts.
@@ -35,5 +39,5 @@ COPY deploy/seed/ ./seeds/
 
 EXPOSE 8080
 
-ENTRYPOINT ["./server"]
+ENTRYPOINT ["/usr/local/bin/backend-entrypoint.sh"]
 CMD ["server"]

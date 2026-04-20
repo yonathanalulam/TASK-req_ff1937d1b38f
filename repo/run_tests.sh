@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# run_tests.sh — single-command runner for ALL test layers.
+# run_tests.sh - single-command runner for ALL test layers.
+#
 # Runs, in order:
 #   1. Backend unit + integration tests (Go)
 #   2. Frontend unit tests (Vitest)
 #   3. Frontend E2E tests (Playwright)
-# Fails the whole pipeline on any layer failure via `set -euo pipefail` plus
-# explicit exit-code capture from each `docker compose run --rm`.
+#
+# Fails the pipeline on any non-zero exit via `set -euo pipefail` plus
+# explicit checks of each `docker compose run --rm` result.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}"
-COMPOSE_DIR="${REPO_ROOT}/deploy/docker"
+cd "${REPO_ROOT}"
 
 # Resolve docker compose invocation: prefer v2 plugin, fall back to v1 binary.
 if docker compose version >/dev/null 2>&1; then
@@ -23,28 +25,13 @@ else
   exit 1
 fi
 
-ENV_FILE="${REPO_ROOT}/.env"
-if [[ ! -f "${ENV_FILE}" ]]; then
-  if [[ -f "${REPO_ROOT}/.env.example" ]]; then
-    echo "[setup] .env not found - copying from .env.example"
-    cp "${REPO_ROOT}/.env.example" "${ENV_FILE}"
-  else
-    echo "error: neither .env nor .env.example exists" >&2
-    exit 1
-  fi
-fi
-
-# TLS certs must exist before the backend starts.
-"${SCRIPT_DIR}/scripts/gen-tls-cert.sh"
-
-cd "${COMPOSE_DIR}"
-
-COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.test.yml)
-COMPOSE_CMD=("${COMPOSE[@]}" "${COMPOSE_FILES[@]}" --env-file "${ENV_FILE}")
+# Compose files: base (docker-compose.yml has defaults for every env var)
+# + test overlay (adds backend-test, frontend-unit-test, frontend-test).
+COMPOSE_CMD=("${COMPOSE[@]}" -f docker-compose.yml -f docker-compose.test.yml)
 
 echo ""
 echo "=========================================="
-echo "  Step 1/4 - Build test images"
+echo "  Step 1/4 - Build all test images"
 echo "=========================================="
 "${COMPOSE_CMD[@]}" build --parallel
 
