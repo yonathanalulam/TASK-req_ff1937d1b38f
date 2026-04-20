@@ -28,7 +28,8 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 fi
 
 # TLS certs must exist before backend starts.
-"${REPO_ROOT}/scripts/gen-tls-cert.sh"
+# Invoke via bash so execution does not depend on +x bit preservation.
+bash "${REPO_ROOT}/scripts/gen-tls-cert.sh"
 
 # Resolve docker compose invocation: prefer v2 plugin, fall back to v1 binary.
 if docker compose version >/dev/null 2>&1; then

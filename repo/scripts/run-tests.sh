@@ -55,7 +55,7 @@ fi
 # TLS is mandatory — the `backend` compose service won't start without a
 # cert/key pair. Generate a deterministic self-signed pair so the Playwright
 # tests have a real server to talk to.
-"${SCRIPT_DIR}/gen-tls-cert.sh"
+bash "${SCRIPT_DIR}/gen-tls-cert.sh"
 
 cd "${COMPOSE_DIR}"
 
